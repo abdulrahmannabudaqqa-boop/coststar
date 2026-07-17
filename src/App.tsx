@@ -504,28 +504,57 @@ const AdminLogin = ({ onLogin, onClose }: { onLogin: () => void; onClose: () => 
     setLoading(true);
     setError('');
     
-    try {
-      // Try to sign in with manual credentials
-      await signInWithEmailAndPassword(auth, email, password);
-      onLogin();
-    } catch (err: any) {
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        // If the user doesn't exist but credentials match our hardcoded admin, try creating it
-        // This handles the "first time" setup automatically for the user
-        const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
-        if (authorizedEmails.includes(email) && password === '81#aboud81') {
+    // 1. Local Check (Priority - as requested "in the code")
+    const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
+    if (authorizedEmails.includes(email) && password === '81#aboud81') {
+      try {
+        // 2. Try Firebase Auth (to make Firestore rules work)
+        await signInWithEmailAndPassword(auth, email, password);
+        onLogin();
+      } catch (err: any) {
+        console.error('Firebase Auth Attempt:', err);
+        if (err.code === 'auth/operation-not-allowed') {
+          // Bypass Firebase Auth for the UI but warn about the database
+          onLogin();
+          alert('تنبيه: تم تسجيل الدخول يدوياً (محلياً). للتمكن من تعديل البيانات في قاعدة البيانات، يجب تفعيل (Email/Password) في إعدادات Firebase.');
+        } else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+          // Attempt to create user if they match the hardcoded credentials
           try {
             await createUserWithEmailAndPassword(auth, email, password);
             onLogin();
-          } catch (createErr: any) {
-            setError('خطأ في إعداد حساب الإدارة: ' + createErr.message);
+          } catch (createErr) {
+            // Last resort: Local login only
+            onLogin();
+            alert('تم الدخول يدوياً. لم نتمكن من ربط الجساب بقاعدة البيانات (تأكد من إعدادات Firebase).');
           }
         } else {
-          setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+          setError('حدث خطأ: ' + err.message);
         }
-      } else {
-        setError('حدث خطأ أثناء تسجيل الدخول: ' + err.message);
       }
+    } else {
+      setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+    }
+    setLoading(false);
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const email = result.user.email;
+      
+      const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
+      if (!email || !authorizedEmails.includes(email)) {
+        await signOut(auth);
+        setError('عذراً، هذا البريد ليس له صلاحيات إدارية');
+      } else {
+        onLogin();
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('حدث خطأ أثناء تسجيل الدخول عبر Google.');
     } finally {
       setLoading(false);
     }
@@ -557,9 +586,9 @@ const AdminLogin = ({ onLogin, onClose }: { onLogin: () => void; onClose: () => 
           <p className="text-muted font-bold text-sm">يرجى إدخال بيانات الاعتماد للوصول للوحة التحكم</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6 text-right">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2">البريد الإلكتروني</label>
+            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2 block">البريد الإلكتروني</label>
             <input 
               type="email" 
               required
@@ -570,7 +599,7 @@ const AdminLogin = ({ onLogin, onClose }: { onLogin: () => void; onClose: () => 
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2">كلمة المرور</label>
+            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2 block">كلمة المرور</label>
             <input 
               type="password" 
               required
@@ -598,11 +627,33 @@ const AdminLogin = ({ onLogin, onClose }: { onLogin: () => void; onClose: () => 
           >
             {loading ? <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : 'تسجيل الدخول'}
           </button>
+
+          <div className="relative py-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-line"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-muted font-bold">أو</span>
+            </div>
+          </div>
+
+          <button 
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="w-full bg-white border-2 border-line text-ink py-4 rounded-2xl font-black text-sm hover:bg-paper transition-all flex items-center justify-center gap-3"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path fill="#EA4335" d="M12.48 10.92v3.28h7.84c-.24 1.84-1.92 5.36-7.84 5.36-5.12 0-9.28-4.24-9.28-9.52s4.16-9.52 9.28-9.52c2.92 0 4.88 1.24 6 2.32l2.6-2.52C19.12 1.36 16.04 0 12.48 0 5.6 0 0 5.6 0 12.48s5.6 12.48 12.48 12.48c7.2 0 12-5.08 12-12.2 0-.84-.08-1.48-.2-2.12h-11.8z"/>
+            </svg>
+            الدخول السريع عبر Google
+          </button>
         </form>
       </motion.div>
     </motion.div>
   );
 };
+
 
 export default function App() {
   const [activeFilter, setActiveFilter] = useState<Category>('all');
