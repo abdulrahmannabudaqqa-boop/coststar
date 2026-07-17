@@ -33,6 +33,30 @@ import {
   Lock,
 } from 'lucide-react';
 import { Product, Category, SiteConfig } from './types';
+import { 
+  db, 
+  auth, 
+  handleFirestoreError, 
+  OperationType 
+} from './lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDoc,
+  addDoc
+} from 'firebase/firestore';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut 
+} from 'firebase/auth';
 
 const INITIAL_SITE_CONFIG: SiteConfig = {
   name: 'مؤسسة النجم الساحلي',
@@ -78,6 +102,7 @@ interface AdminDashboardProps {
   setNewProduct: React.Dispatch<React.SetStateAction<Partial<Product>>>;
   addProduct: () => void;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
+  handleLogout: () => Promise<void>;
 }
 
 const AdminDashboard = ({
@@ -97,7 +122,8 @@ const AdminDashboard = ({
   newProduct,
   setNewProduct,
   addProduct,
-  setIsLoggedIn
+  setIsLoggedIn,
+  handleLogout
 }: AdminDashboardProps) => (
   <motion.div 
     initial={{ opacity: 0, scale: 0.98 }}
@@ -153,11 +179,7 @@ const AdminDashboard = ({
           </div>
         </div>
         <button 
-          onClick={() => {
-            setIsAdminView(false);
-            setIsAdminMode(false);
-            setIsLoggedIn(false);
-          }}
+          onClick={handleLogout}
           className="flex items-center justify-center gap-3 w-full p-4 bg-white text-wine-dark rounded-2xl font-black hover:bg-gold hover:text-ink transition-all shadow-xl"
         >
           <LogOut size={20} /> خروج للموقع العام
@@ -469,17 +491,28 @@ const AdminDashboard = ({
   </motion.div>
 );
 
-const AdminLogin = ({ onLogin, onClose }: { onLogin: (email: string, pass: string) => void; onClose: () => void }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+const AdminLogin = ({ onClose }: { onClose: () => void }) => {
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (email === 'abdulrahmannabudaqqa@gmail.com' && password === '81#aboud81') {
-      onLogin(email, password);
-    } else {
-      setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const email = result.user.email;
+      
+      const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
+      if (!email || !authorizedEmails.includes(email)) {
+        await signOut(auth);
+        setError('عذراً، هذا البريد ليس له صلاحيات إدارية');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -506,33 +539,10 @@ const AdminLogin = ({ onLogin, onClose }: { onLogin: (email: string, pass: strin
             <Lock size={32} className="text-wine" />
           </div>
           <h2 className="text-3xl font-black text-ink mb-2">دخول الإدارة</h2>
-          <p className="text-muted font-bold text-sm">يرجى إدخال بيانات الاعتماد للوصول للوحة التحكم</p>
+          <p className="text-muted font-bold text-sm">يرجى تسجيل الدخول باستخدام بريد المدير المعتمد</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2">البريد الإلكتروني</label>
-            <input 
-              type="email" 
-              required
-              className="w-full bg-paper border border-line rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-wine/10 transition-all"
-              placeholder="example@mail.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2">كلمة المرور</label>
-            <input 
-              type="password" 
-              required
-              className="w-full bg-paper border border-line rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-wine/10 transition-all"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-            />
-          </div>
-
+        <div className="space-y-6">
           {error && (
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
@@ -544,12 +554,28 @@ const AdminLogin = ({ onLogin, onClose }: { onLogin: (email: string, pass: strin
           )}
 
           <button 
-            type="submit"
-            className="w-full bg-wine text-white py-5 rounded-2xl font-black text-lg hover:bg-wine-dark shadow-xl shadow-wine/20 transition-all active:scale-[0.98]"
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="w-full bg-white border-2 border-line text-ink py-5 rounded-2xl font-black text-lg hover:bg-paper shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-4"
           >
-            تسجيل الدخول
+            {loading ? (
+              <div className="w-6 h-6 border-4 border-wine border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <>
+                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <path fill="#EA4335" d="M12.48 10.92v3.28h7.84c-.24 1.84-1.92 5.36-7.84 5.36-5.12 0-9.28-4.24-9.28-9.52s4.16-9.52 9.28-9.52c2.92 0 4.88 1.24 6 2.32l2.6-2.52C19.12 1.36 16.04 0 12.48 0 5.6 0 0 5.6 0 12.48s5.6 12.48 12.48 12.48c7.2 0 12-5.08 12-12.2 0-.84-.08-1.48-.2-2.12h-11.8z"/>
+                </svg>
+                تسجيل الدخول عبر Google
+              </>
+            )}
           </button>
-        </form>
+          
+          <div className="text-center">
+            <p className="text-[10px] text-muted font-bold uppercase tracking-widest opacity-50">
+              مخصص فقط لمدير النظام
+            </p>
+          </div>
+        </div>
       </motion.div>
     </motion.div>
   );
@@ -564,11 +590,10 @@ export default function App() {
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(INITIAL_SITE_CONFIG);
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
   
-  // Temporary states for "Save/Cancel" logic
   const [tempSiteConfig, setTempSiteConfig] = useState<SiteConfig>(INITIAL_SITE_CONFIG);
-  const [tempProducts, setTempProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [tempProducts, setTempProducts] = useState<Product[]>([]);
   
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: '',
@@ -582,18 +607,83 @@ export default function App() {
 
   const [scrolled, setScrolled] = useState(false);
 
+  // Sync Auth State
+  useEffect(() => {
+    const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && user.email && authorizedEmails.includes(user.email)) {
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Site Config
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'site_config', 'main'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSiteConfig(snapshot.data() as SiteConfig);
+      }
+    }, (error) => {
+      console.error("Site Config Listener Error:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Products
+  useEffect(() => {
+    const q = query(collection(db, 'products'), orderBy('id', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const prods: Product[] = [];
+      snapshot.forEach((doc) => {
+        prods.push({ ...doc.data() } as Product);
+      });
+      // Fallback to initial if empty
+      if (prods.length === 0) {
+        setProducts(INITIAL_PRODUCTS);
+      } else {
+        setProducts(prods);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'products'));
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     if (isAdminView) {
       setTempSiteConfig(siteConfig);
       setTempProducts(products);
     }
-  }, [isAdminView]);
+  }, [isAdminView, siteConfig, products]);
 
-  const handleSaveAll = () => {
-    setSiteConfig(tempSiteConfig);
-    setProducts(tempProducts);
-    setIsAdminMode(false);
-    alert('تم حفظ كافة التغييرات بنجاح ✓');
+  const handleSaveAll = async () => {
+    try {
+      // Save Site Config
+      await setDoc(doc(db, 'site_config', 'main'), tempSiteConfig);
+      
+      // Save Products (This app's logic seems to overwrite the whole list or manage it locally)
+      // For proper Firestore, we should add/update individual docs.
+      // But since we have a list in state, we'll sync the changes.
+      
+      // 1. Identify new or updated products
+      for (const prod of tempProducts) {
+        await setDoc(doc(db, 'products', prod.id), prod);
+      }
+      
+      // 2. Handle deletions (compare products and tempProducts)
+      const currentIds = new Set(tempProducts.map(p => p.id));
+      const deletedProds = products.filter(p => !currentIds.has(p.id));
+      for (const prod of deletedProds) {
+        await deleteDoc(doc(db, 'products', prod.id));
+      }
+
+      setIsAdminMode(false);
+      alert('تم حفظ كافة التغييرات بنجاح ✓');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'batch-save');
+      alert('حدث خطأ أثناء الحفظ');
+    }
   };
 
   const handleCancelChanges = () => {
@@ -638,12 +728,21 @@ export default function App() {
     });
   };
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsAdminView(false);
+      setIsAdminMode(false);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   return (
     <div className="min-h-screen font-sans text-right tech-bg" dir="rtl">
       <AnimatePresence>
         {isAdminView && !isLoggedIn && (
           <AdminLogin 
-            onLogin={() => setIsLoggedIn(true)} 
             onClose={() => setIsAdminView(false)} 
           />
         )}
@@ -666,6 +765,7 @@ export default function App() {
             setNewProduct={setNewProduct}
             addProduct={addProduct}
             setIsLoggedIn={setIsLoggedIn}
+            handleLogout={handleLogout}
           />
         )}
       </AnimatePresence>
@@ -928,7 +1028,30 @@ export default function App() {
               <h3 className="text-3xl font-black mb-3">اطلب عرض سعر رسمي</h3>
               <p className="text-muted text-sm mb-12 font-bold opacity-70">سيتواصل معكم مستشار المبيعات خلال ساعات عمل المؤسسة الرسمية.</p>
               
-              <form className="space-y-8" onSubmit={(e) => { e.preventDefault(); alert('تم استلام طلبكم ✓'); }}>
+              <form className="space-y-8" onSubmit={async (e) => { 
+                e.preventDefault(); 
+                const form = e.currentTarget;
+                const companyName = (form.elements[0] as HTMLInputElement).value;
+                const contact = (form.elements[1] as HTMLInputElement).value;
+                const requestType = (form.elements[2] as HTMLSelectElement).value;
+                const details = (form.elements[3] as HTMLTextAreaElement).value;
+
+                try {
+                  await addDoc(collection(db, 'tenders'), {
+                    companyName,
+                    contact,
+                    requestType,
+                    details,
+                    status: 'pending',
+                    createdAt: new Date().toISOString()
+                  });
+                  alert('تم استلام طلبكم بنجاح ✓ سيتواصل معكم الفريق المختص قريباً.');
+                  form.reset();
+                } catch (error) {
+                  console.error(error);
+                  alert('حدث خطأ أثناء إرسال الطلب، يرجى المحاولة لاحقاً');
+                }
+              }}>
                 <div className="grid md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] mr-2">جهة الطلب</label>

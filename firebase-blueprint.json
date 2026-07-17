@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "An inventory item in the store",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["all", "laptop", "desktop", "print"] },
+        "subCategory": { "type": "string", "maxLength": 100 },
+        "specs": { "type": "string", "maxLength": 1000 },
+        "price": { "type": "number" },
+        "isSold": { "type": "boolean" },
+        "icon": { "type": "string", "format": "uri" }
+      },
+      "required": ["id", "name", "category", "price", "isSold"]
+    },
+    "SiteConfig": {
+      "title": "Site Configuration",
+      "description": "Global settings and contact info for the institution",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "location": { "type": "string", "maxLength": 500 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "aboutText": { "type": "string", "maxLength": 5000 },
+        "email": { "type": "string", "format": "email" }
+      },
+      "required": ["name", "location", "phone", "email"]
+    },
+    "TenderRequest": {
+      "title": "Tender Request",
+      "description": "A business order request from a company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyName": { "type": "string", "maxLength": 200 },
+        "contact": { "type": "string", "maxLength": 100 },
+        "requestType": { "type": "string", "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "closed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "companyName", "contact", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Store inventory items"
+    },
+    "/site_config/main": {
+      "schema": "SiteConfig",
+      "description": "Global site settings"
+    },
+    "/tenders/{tenderId}": {
+      "schema": "TenderRequest",
+      "description": "Business tender submissions"
+    }
+  }
+}
