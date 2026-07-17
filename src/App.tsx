@@ -55,7 +55,9 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   onAuthStateChanged, 
-  signOut 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 
 const INITIAL_SITE_CONFIG: SiteConfig = {
@@ -491,26 +493,39 @@ const AdminDashboard = ({
   </motion.div>
 );
 
-const AdminLogin = ({ onClose }: { onClose: () => void }) => {
+const AdminLogin = ({ onLogin, onClose }: { onLogin: () => void; onClose: () => void }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleGoogleLogin = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
     setError('');
+    
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const email = result.user.email;
-      
-      const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
-      if (!email || !authorizedEmails.includes(email)) {
-        await signOut(auth);
-        setError('عذراً، هذا البريد ليس له صلاحيات إدارية');
-      }
+      // Try to sign in with manual credentials
+      await signInWithEmailAndPassword(auth, email, password);
+      onLogin();
     } catch (err: any) {
-      console.error(err);
-      setError('حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.');
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        // If the user doesn't exist but credentials match our hardcoded admin, try creating it
+        // This handles the "first time" setup automatically for the user
+        const authorizedEmails = ['abdulrahmannabudaqqa@gmail.com', 'aboudfdgreat@gmail.com'];
+        if (authorizedEmails.includes(email) && password === '81#aboud81') {
+          try {
+            await createUserWithEmailAndPassword(auth, email, password);
+            onLogin();
+          } catch (createErr: any) {
+            setError('خطأ في إعداد حساب الإدارة: ' + createErr.message);
+          }
+        } else {
+          setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        }
+      } else {
+        setError('حدث خطأ أثناء تسجيل الدخول: ' + err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -539,10 +554,33 @@ const AdminLogin = ({ onClose }: { onClose: () => void }) => {
             <Lock size={32} className="text-wine" />
           </div>
           <h2 className="text-3xl font-black text-ink mb-2">دخول الإدارة</h2>
-          <p className="text-muted font-bold text-sm">يرجى تسجيل الدخول باستخدام بريد المدير المعتمد</p>
+          <p className="text-muted font-bold text-sm">يرجى إدخال بيانات الاعتماد للوصول للوحة التحكم</p>
         </div>
 
-        <div className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2">البريد الإلكتروني</label>
+            <input 
+              type="email" 
+              required
+              className="w-full bg-paper border border-line rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-wine/10 transition-all text-right"
+              placeholder="example@mail.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-muted uppercase tracking-widest mr-2">كلمة المرور</label>
+            <input 
+              type="password" 
+              required
+              className="w-full bg-paper border border-line rounded-2xl px-6 py-4 font-bold outline-none focus:ring-4 focus:ring-wine/10 transition-all text-right"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
+          </div>
+
           {error && (
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
@@ -554,28 +592,13 @@ const AdminLogin = ({ onClose }: { onClose: () => void }) => {
           )}
 
           <button 
-            onClick={handleGoogleLogin}
+            type="submit"
             disabled={loading}
-            className="w-full bg-white border-2 border-line text-ink py-5 rounded-2xl font-black text-lg hover:bg-paper shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-4"
+            className="w-full bg-wine text-white py-5 rounded-2xl font-black text-lg hover:bg-wine-dark shadow-xl shadow-wine/20 transition-all active:scale-[0.98] flex items-center justify-center"
           >
-            {loading ? (
-              <div className="w-6 h-6 border-4 border-wine border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <>
-                <svg className="w-6 h-6" viewBox="0 0 24 24">
-                  <path fill="#EA4335" d="M12.48 10.92v3.28h7.84c-.24 1.84-1.92 5.36-7.84 5.36-5.12 0-9.28-4.24-9.28-9.52s4.16-9.52 9.28-9.52c2.92 0 4.88 1.24 6 2.32l2.6-2.52C19.12 1.36 16.04 0 12.48 0 5.6 0 0 5.6 0 12.48s5.6 12.48 12.48 12.48c7.2 0 12-5.08 12-12.2 0-.84-.08-1.48-.2-2.12h-11.8z"/>
-                </svg>
-                تسجيل الدخول عبر Google
-              </>
-            )}
+            {loading ? <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : 'تسجيل الدخول'}
           </button>
-          
-          <div className="text-center">
-            <p className="text-[10px] text-muted font-bold uppercase tracking-widest opacity-50">
-              مخصص فقط لمدير النظام
-            </p>
-          </div>
-        </div>
+        </form>
       </motion.div>
     </motion.div>
   );
@@ -743,6 +766,7 @@ export default function App() {
       <AnimatePresence>
         {isAdminView && !isLoggedIn && (
           <AdminLogin 
+            onLogin={() => setIsLoggedIn(true)} 
             onClose={() => setIsAdminView(false)} 
           />
         )}
